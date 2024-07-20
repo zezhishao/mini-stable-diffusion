@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, heads, d_model):
+    def __init__(self, heads, d_model, dropout = 0.2):
         super().__init__()
         d_head = d_model // heads
         self.q = nn.Linear(d_head, d_head)
@@ -16,7 +16,9 @@ class SelfAttention(nn.Module):
         self.d_head = d_head
         self.heads = heads
 
-    def forward(self, x, mask = None):
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, mask = False):
         B, T, C = x.size()
 
         x = x.view(B, T, self.heads, self.d_head)
@@ -35,5 +37,6 @@ class SelfAttention(nn.Module):
 
         out = out.transpose(1, 2).reshape(B, T, C)
         out = self.proj(out)
+        out = self.dropout(out)
 
         return out
