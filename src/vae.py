@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules.activation import SiLU
+from torch.nn.modules.normalization import GroupNorm
 from .attention import SelfAttention
 
 
@@ -55,40 +57,34 @@ class VAE_Attention(nn.Module):
         return x
 
 
-
 class VAE_Encoder(nn.Module):
     def __init__(self, channels) -> None:
         super().__init__()
 
         self.net = nn.Sequential(
 
-        # (B, 3, H, W) -> (B, channels, H, W)
+        # (B, 3[R, G, B], H, W) -> (B, channels, H, W)
         nn.Conv2d(3, channels, kernel_size=3, padding=1),
-        VAE_Residual(channels, channels), # same dimensions
         VAE_Residual(channels, channels), # same dimensions
 
         # (B, channels, H, W) -> (B, channels, H/2, W / 2)
         nn.Conv2d(channels, channels, kernel_size=3, stride=2),
         # (B, channels, H/2, W/2) -> (B, channels * 2, H/2, W/2)
         VAE_Residual(channels, channels * 2), # increase by 2x
-        VAE_Residual(channels * 2, channels * 2), # same dimensions as above
 
         # (B, channels * 2, H/2, W/2) -> (B, channels * 2, H/4, W / 4)
         nn.Conv2d(channels * 2, channels * 2, kernel_size=3, stride=2),
         # (B, channels * 2, H/4, W/4) -> (B, channels * 4, H/4, W/4)
         VAE_Residual(channels * 2, channels * 4), # increase by 4x
-        VAE_Residual(channels * 4, channels * 4), # same dimensions as above
 
-        # (B, channels * 4, H/2, W/2) -> (B, channels * 4, H/8, W / 8)
+        # (B, channels * 4, H/4, W/4) -> (B, channels * 4, H/8, W / 8)
         nn.Conv2d(channels * 4, channels * 4, kernel_size=3, stride=2),
         # (B, channels * 4, H/8, W/8) -> (B, channels * 4, H/8, W/8)
         VAE_Residual(channels * 4, channels * 4), # increase by 4x
-        VAE_Residual(channels * 4 , channels * 4), # same dimensions as above
 
         VAE_Attention(channels * 4),
         # (B, channels * 4, H/8, W/8) -> (B, channels * 4, H/8, W/8)
         VAE_Residual(channels * 4, channels * 4), # increase by 4x
-        VAE_Residual(channels * 4 , channels * 4), # same dimensions as above
 
         nn.GroupNorm(32, channels*4),
         nn.SiLU(),
@@ -103,8 +99,9 @@ class VAE_Encoder(nn.Module):
 
     def forward(self, x: torch.Tensor, noise:torch.Tensor):
         # x: B, C, H, W
+        # noise: N(0, I)
         for layer in self.net:
-            if getattr(layer, 'stride') == (2, 2):
+            if getattr(layer, 'stride', None) == (2, 2):
                 x = F.pad(x, (0, 1, 0, 1)) # apply pad at bottom and right, if stride is 2
             x = layer(x)
 
@@ -124,5 +121,47 @@ class VAE_Encoder(nn.Module):
 
 
 class VAE_Decoder(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, channels) -> None:
         super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv2d(4, 4, kernel_size=1),
+            # (B, 4, H/8, W/8) -> (B, channels*4, H/8, W/8)
+            nn.Conv2d(4, channels * 4, kernel_size=3, padding=1),
+            VAE_Residual(channels * 4, channels * 4),
+
+            # Same shapes throughout
+            VAE_Attention(channels * 4),
+            VAE_Residual(channels * 4, channels * 4),
+
+            # (B, channels*4, H/8, W/8) -> (B, channels*4, H/4, W/4)
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(channels * 4, channels * 4, kernel_size=3, padding=1),
+            VAE_Residual(channels * 4, channels * 4),
+
+            # (B, channels * 4, H/4, W/4) -> (B, channels * 2, H/2, W/2)
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(channels*4, channels*4, kernel_size=3, padding=1),
+            VAE_Residual(channels * 4, channels * 2),
+
+            # (B, channels * 2, H/2, W/2) -> (B, channels, H, W)
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(channels*4, channels*4, kernel_size=3, padding=1),
+            VAE_Residual(channels * 2, channels),
+
+            nn.GroupNorm(32, channels),
+            nn.SiLU(),
+
+            # (B, channels, H, W) -> (B, 3[R, G, B], H, W)
+            nn.Conv2d(channels, 3, kernel_size=3, padding=1)
+        )
+
+    def forward(self, x):
+        # x: (B, 4, H/8, W/8)
+
+        # Descaling Factor
+        x = (1. / 0.18215) * x
+
+        # Forward Pass
+        x = self.net(x)
+        return x
