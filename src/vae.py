@@ -58,7 +58,7 @@ class VAE_Attention(nn.Module):
 
 
 class VAE_Encoder(nn.Module):
-    def __init__(self, channels) -> None:
+    def __init__(self, channels = 128) -> None:
         super().__init__()
 
         self.net = nn.Sequential(
@@ -121,7 +121,7 @@ class VAE_Encoder(nn.Module):
 
 
 class VAE_Decoder(nn.Module):
-    def __init__(self, channels) -> None:
+    def __init__(self, channels = 128) -> None:
         super().__init__()
 
         self.net = nn.Sequential(
