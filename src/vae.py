@@ -117,6 +117,7 @@ class VAE_Encoder(nn.Module):
         # Scaling constant
         x *= 0.18215
 
+        # output shape of x: (B, 4, H/8, H/8) i.e (32, 4, 64, 64)
         return x
 
 
