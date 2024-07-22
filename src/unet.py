@@ -82,6 +82,8 @@ class UNetEncoder(nn.Module):
         # (B, 4, H/8, W/8) -> (B, channels, H/8, W/8)
         self.block1 = nn.Sequential(
             nn.Conv2d(4, channels, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.SiLU(),
         )
         self.res1 = UNetResidual(channels)
@@ -91,24 +93,30 @@ class UNetEncoder(nn.Module):
         self.block2 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels, channels * 2, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 2),
+            nn.Conv2d(channels * 2, channels * 2, kernel_size=3, padding=1),
             nn.SiLU(),
         )
         self.res2 = UNetResidual(channels * 2)
         self.att2 = UNetAttention(8, channels * 2 // 8)
 
-        # (B, channels * 2, H/32, W/32) -> (B, channels * 4, H/64, W/64)
+        # (B, channels * 2, H/16, W/32) -> (B, channels * 4, H/32, W/32)
         self.block3 =  nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels * 2, channels * 4, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 4),
+            nn.Conv2d(channels * 4, channels * 4, kernel_size=3, padding=1),
             nn.SiLU(),
         )
         self.res3 = UNetResidual(channels * 4)
         self.att3 = UNetAttention(8, channels * 4 // 8)
 
-        # (B, channels * 4, H/64, W/64) -> (B, channels * 8, H/128, W/128)
+        # (B, channels * 4, H/32, W/32) -> (B, channels * 8, H/64, W/64)
         self.block4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels * 4, channels * 8, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 8),
+            nn.Conv2d(channels * 8, channels * 8, kernel_size=3, padding=1),
             nn.SiLU(),
         )
         self.res4 = UNetResidual(channels * 4)
@@ -148,18 +156,118 @@ class UNetEncoder(nn.Module):
 
 class UNetDecoder(nn.Module):
     def __init__(self, channels = 320):
-        # TODO
-        pass
+        # (B, channels * 8, H/64, W/64) --[concat]-> (B, channels * 16, H/64, W/64) -> (B, channels * 4, H/32, W/32)
+        self.block1 = nn.Sequential(
+            nn.Conv2d(channels * 16, channels * 8, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 8),
+            nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
+            nn.Upsample(scale_factor=2),
+            nn.SiLU(),
+        )
+
+        self.res1 = UNetResidual(channels * 4)
+        self.att1 = UNetResidual(8, channels * 4 // 8)
+
+        # (B, channels * 4, H/32, W/32) --[concat]-> (B, channels * 8, H/32, W/32) -> (B, channels * 2, H/16, W/16)
+        self.block2 = nn.Sequential(
+            nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 4),
+            nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
+            nn.Upsample(scale_factor=2),
+            nn.SiLU(),
+        )
+
+        self.res2 = UNetResidual(channels * 2)
+        self.att2 = UNetResidual(8, channels * 2 // 8)
+
+
+        # (B, channels * 2, H/16, W/16) --[concat]-> (B, channels * 4, H/16, W/16) -> (B, channels, H/8, W/8)
+        self.block3 = nn.Sequential(
+            nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
+            nn.GroupNorm(32, channels * 2),
+            nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1),
+            nn.Upsample(scale_factor=2),
+            nn.SiLU(),
+        )
+
+        self.res3 = UNetResidual(channels * 2)
+        self.att3 = UNetResidual(8, channels * 2 // 8)
+
+        # (B, channels, H/8, W/8) --[concat]-> (B, channels * 2, H/8, W/8) -> (B, channels, H/8, W/8)
+        self.block4 = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1),
+            nn.SiLU(),
+        )
+
+        self.res4 = UNetResidual(channels)
+        self.att4 = UNetResidual(8, channels // 8)
+
+        # (B, channels, H/8, W/8) -> (B, 4, H/8, H/8)
+        self.output_layer = nn.Sequential(
+            nn.GroupNorm(32, channels),
+            nn.Conv2d(channels, 4, kernel_size=3, padding=1),
+            nn.SiLU(),
+        )
+
+        self.blocks = nn.ModuleList([
+            self.block1,
+            self.block2,
+            self.block3,
+            self.block4
+        ])
+
+        self.res = nn.ModuleList([
+            self.res1,
+            self.res2,
+            self.res3,
+            self.res4
+        ])
+
+        self.att = nn.ModuleList([
+            self.att1,
+            self.att2,
+            self.att3,
+            self.att4
+        ])
+
+    def forward(self, x, skips, prompt, time):
+        for block, skip, res, att in zip(self.blocks, skips, self.res, self.att):
+            x = torch.cat([x, skip], dim=1)
+            x = block(x)
+            x = res(x, time)
+            x = att(x, prompt)
+        x = self.output_layer(x)
+        return x
 
 
 class UNet(nn.Module):
     def __init__(self, channels=320):
+        # (B, 4, H/8, W/8) -> (B, channels * 8, H/64, H/64)
         self.encoders = UNetEncoder(channels)
 
-        # (B, channels * 8, H/128, W/128) -> (B, channels * 16, H/256, W/256)
-        self.output_block = nn.Sequential(
+        # (B, channels * 8, H/64, W/64) -> (B, channels * 16, H/128, W/128)
+        self.bottleneck_in = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels * 8, channels * 16, kernel_size=3, padding=1)
         )
 
-        # self.decoders = UNetDecoder(channels) TODO
+        self.res = UNetResidual(channels * 16)
+        self.att = UNetAttention(8, channels * 16 // 8)
+
+        #  (B, channels * 16, H/128, W/128) -> (B, channels * 8, H/64, W/64)
+        self.bottleneck_out = nn.Sequential(
+            nn.Conv2d(channels * 16, channels * 8, kernel_size=3, padding=1),
+            nn.Upsample(scale_factor=2),
+        )
+
+        # (B, channels * 8, H/64, W/64) -> (B, 4, H/8, W/8)
+        self.decoders = UNetDecoder(channels)
+
+    def forward(self, x, prompt, time):
+        x, skips = self.encoders(x, prompt, time)
+
+        x = self.bottleneck_in(x)
+        x = self.res(x)
+        x = self.att(x)
+
+        x = self.decoders(x, skips, prompt, time)
