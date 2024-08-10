@@ -10,7 +10,6 @@ class UNetResidual(nn.Module):
         self.gn = nn.GroupNorm(32, channels)
         self.conv = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
-
         self.time_ln = nn.Linear(n_time, channels)
 
         self.gn_merge = nn.GroupNorm(32, channels)
@@ -269,5 +268,6 @@ class UNet(nn.Module):
         x = self.bottleneck_in(x)
         x = self.res(x)
         x = self.att(x)
+        x = self.bottleneck_out(x)
 
         x = self.decoders(x, skips, prompt, time)
