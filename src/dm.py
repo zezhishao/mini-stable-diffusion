@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .unet import UNet
 
 
 class DiffusionModel(nn.Module):
@@ -12,3 +13,9 @@ class DiffusionModel(nn.Module):
             nn.Linear(n_embd * 4, n_embd * 4),
             nn.SiLU()
         )
+        self.unet = UNet()
+
+    def forward(self, x, prompt, time):
+        time = self.time_emb(time)
+        out = self.unet(x, prompt, time)
+        return out

@@ -204,8 +204,8 @@ class UNetDecoder(nn.Module):
         # (B, channels, H/8, W/8) -> (B, 4, H/8, H/8)
         self.output_layer = nn.Sequential(
             nn.GroupNorm(32, channels),
-            nn.Conv2d(channels, 4, kernel_size=3, padding=1),
             nn.SiLU(),
+            nn.Conv2d(channels, 4, kernel_size=3, padding=1),
         )
 
         self.blocks = nn.ModuleList([
