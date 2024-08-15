@@ -165,7 +165,7 @@ class UNetDecoder(nn.Module):
         )
 
         self.res1 = UNetResidual(channels * 4)
-        self.att1 = UNetResidual(8, channels * 4 // 8)
+        self.att1 = UNetAttention(8, channels * 4 // 8)
 
         # (B, channels * 4, H/32, W/32) --[concat]-> (B, channels * 8, H/32, W/32) -> (B, channels * 2, H/16, W/16)
         self.block2 = nn.Sequential(
@@ -177,7 +177,7 @@ class UNetDecoder(nn.Module):
         )
 
         self.res2 = UNetResidual(channels * 2)
-        self.att2 = UNetResidual(8, channels * 2 // 8)
+        self.att2 = UNetAttention(8, channels * 2 // 8)
 
 
         # (B, channels * 2, H/16, W/16) --[concat]-> (B, channels * 4, H/16, W/16) -> (B, channels, H/8, W/8)
@@ -190,7 +190,7 @@ class UNetDecoder(nn.Module):
         )
 
         self.res3 = UNetResidual(channels * 2)
-        self.att3 = UNetResidual(8, channels * 2 // 8)
+        self.att3 = UNetAttention(8, channels * 2 // 8)
 
         # (B, channels, H/8, W/8) --[concat]-> (B, channels * 2, H/8, W/8) -> (B, channels, H/8, W/8)
         self.block4 = nn.Sequential(
@@ -199,7 +199,7 @@ class UNetDecoder(nn.Module):
         )
 
         self.res4 = UNetResidual(channels)
-        self.att4 = UNetResidual(8, channels // 8)
+        self.att4 = UNetAttention(8, channels // 8)
 
         # (B, channels, H/8, W/8) -> (B, 4, H/8, H/8)
         self.output_layer = nn.Sequential(

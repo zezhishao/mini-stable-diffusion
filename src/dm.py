@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .unet import UNet
+from .vae import VAE_Encoder, VAE_Decoder
 
 
 class DiffusionModel(nn.Module):
@@ -14,8 +15,14 @@ class DiffusionModel(nn.Module):
             nn.SiLU()
         )
         self.unet = UNet()
+        self.encoder = VAE_Encoder()
+        self.decoder = VAE_Decoder()
 
-    def forward(self, x, prompt, time):
+    def forward(self, x, noise, prompt, time):
         time = self.time_emb(time)
-        out = self.unet(x, prompt, time)
+
+        x = self.encoder(x, noise)
+        x = self.unet(x, prompt, time)
+        out = self.decoder(x)
+        
         return out

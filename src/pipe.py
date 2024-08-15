@@ -42,22 +42,20 @@ def generate(prompt:str,
         else:
             generator.seed()
 
-        clip = models['clip']
-        clip.to(device)
+        bert = models['bert']
+        bert.to(device)
 
-        tokens = tokenizer.batch_encode_plus([prompt], padding="max_length", max_length=77).input_ids
-        tokens = torch.tensor(tokens, dtype=torch.int32, device=device)
-        cprompt_logits = clip(tokens)
+        tokens = bert.tokenize([prompt])
+        cprompt_logits = bert(tokens)
         if cfg:
-            utokens = tokenizer.batch_encode_plus([u_prompt], padding="max_length", max_length=77).input_ids
-            utokens = torch.tensor(utokens, dtype=torch.int32, device=device)
-            uprompt_logits = clip(utokens)
+            utokens = bert.tokenize([u_prompt])
+            uprompt_logits = bert(utokens)
             prompt_logits = torch.cat([cprompt_logits, uprompt_logits])
         
         else:
             prompt_logits = cprompt_logits
 
-        to_idle_device(clip)
+        to_idle_device(bert)
 
         # sampler = DDPMSampler(generator)
         # sample.set_inference_steps(n_inference_steps)
