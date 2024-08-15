@@ -3,15 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .unet import UNet
 from .vae import VAE_Encoder, VAE_Decoder
+from .utils import Config
+
+
+config = Config()
 
 
 class DiffusionModel(nn.Module):
-    def __init__(self, n_embd) -> None:
+    def __init__(self, n_embd=config.TIME_POS_DIM) -> None:
         super().__init__()
         self.time_emb = nn.Sequential(
             nn.Linear(n_embd, n_embd * 4),
             nn.SiLU(),
-            nn.Linear(n_embd * 4, n_embd * 4),
+            nn.Linear(n_embd * 4, n_embd),
             nn.SiLU()
         )
         self.unet = UNet()

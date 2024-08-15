@@ -124,19 +124,3 @@ def generate(prompt:str,
 
         return images[0]
 
-
-def rescale(x, old, new, clamp=False):
-    old_min, old_max = old
-    new_min, new_max = new
-    x -= old_min
-    x *= (new_max - new_min) / (old_max - old_min)
-    x += new_min
-    if clamp:
-        x = x.clamp(new_min, new_max)
-    return x
-
-
-def get_time_embedding(step):
-    freqs = torch.pow(10000, torch.arange(0, 160, dtype=torch.float32) / 160) 
-    x = torch.tensor([step], dtype=torch.float32)[:, None] * freqs[None]
-    return torch.cat([torch.cos(x), torch.sin(x)], dim=-1)

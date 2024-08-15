@@ -1,10 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .utils import Config
+
+
+config = Config()
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, heads, d_model, dropout = 0.2):
+    def __init__(self, heads, d_model, dropout = config.DROPOUT):
         super().__init__()
         d_head = d_model // heads
         self.q = nn.Linear(d_head, d_head)

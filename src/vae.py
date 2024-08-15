@@ -2,14 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .attention import SelfAttention
+from .utils import Config
+
+config = Config()
 
 
 class VAE_Residual(nn.Module):
-    def __init__(self, in_channels, out_channels) -> None:
+    def __init__(self, in_channels:int, out_channels:int) -> None:
         super().__init__()
-        self.gn1 = nn.GroupNorm(32, in_channels)
+        self.gn1 = nn.GroupNorm(config.BATCH_SIZE, in_channels)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.gn2 = nn.GroupNorm(32, out_channels)
+        self.gn2 = nn.GroupNorm(config.BATCH_SIZE, out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
 
         if in_channels == out_channels:
@@ -17,7 +20,7 @@ class VAE_Residual(nn.Module):
         else:
             self.res_layer = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
         # x: (B, in, H, W) -> x:(B, out, H, W)
 
         resd_x = self.res_layer(x)
@@ -36,12 +39,12 @@ class VAE_Residual(nn.Module):
 
 
 class VAE_Attention(nn.Module):
-    def __init__(self, channels) -> None:
+    def __init__(self, channels:int) -> None:
         super().__init__()
-        self.gn = nn.GroupNorm(32, channels)
+        self.gn = nn.GroupNorm(config.BATCH_SIZE, channels)
         self.att = SelfAttention(1, channels)
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
         # x: (B, C, H, W)
         B, C, H, W = x.size()
         resd = x
@@ -56,7 +59,7 @@ class VAE_Attention(nn.Module):
 
 
 class VAE_Encoder(nn.Module):
-    def __init__(self, channels = 128) -> None:
+    def __init__(self, channels:int = config.VAE_INIT_CHANNELS) -> None:
         super().__init__()
 
         self.net = nn.Sequential(
@@ -84,7 +87,7 @@ class VAE_Encoder(nn.Module):
         # (B, channels * 4, H/8, W/8) -> (B, channels * 4, H/8, W/8)
         VAE_Residual(channels * 4, channels * 4), # increase by 4x
 
-        nn.GroupNorm(32, channels*4),
+        nn.GroupNorm(config.BATCH_SIZE, channels*4),
         nn.SiLU(),
 
         # bottleneck
@@ -95,7 +98,7 @@ class VAE_Encoder(nn.Module):
         nn.Conv2d(8, 8, kernel_size=1),
     )
 
-    def forward(self, x: torch.Tensor, noise:torch.Tensor):
+    def forward(self, x: torch.Tensor, noise:torch.Tensor) -> torch.Tensor:
         # x: B, C, H, W
         # noise: N(0, I)
         for layer in self.net:
@@ -120,7 +123,7 @@ class VAE_Encoder(nn.Module):
 
 
 class VAE_Decoder(nn.Module):
-    def __init__(self, channels = 128) -> None:
+    def __init__(self, channels:int = config.VAE_INIT_CHANNELS) -> None:
         super().__init__()
 
         self.net = nn.Sequential(
@@ -148,14 +151,14 @@ class VAE_Decoder(nn.Module):
             nn.Conv2d(channels*4, channels*4, kernel_size=3, padding=1),
             VAE_Residual(channels * 2, channels),
 
-            nn.GroupNorm(32, channels),
+            nn.GroupNorm(config.BATCH_SIZE, channels),
             nn.SiLU(),
 
             # (B, channels, H, W) -> (B, 3[R, G, B], H, W)
             nn.Conv2d(channels, 3, kernel_size=3, padding=1)
         )
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
         # x: (B, 4, H/8, W/8)
 
         # Descaling Factor

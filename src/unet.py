@@ -2,20 +2,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .attention import SelfAttention, CrossAttention
+from .utils import Config
+from typing import List, Tuple
+
+
+config = Config()
 
 
 class UNetResidual(nn.Module):
-    def __init__(self, channels, n_time = 1280):
+    def __init__(self, channels:int, n_time:int = config.TIME_DIM) -> None:
         super().__init__()
-        self.gn = nn.GroupNorm(32, channels)
+        self.gn = nn.GroupNorm(config.BATCH_SIZE, channels)
         self.conv = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
         self.time_ln = nn.Linear(n_time, channels)
 
-        self.gn_merge = nn.GroupNorm(32, channels)
+        self.gn_merge = nn.GroupNorm(config.BATCH_SIZE, channels)
         self.conv_merge = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
-    def forward(self, x, time):
+    def forward(self, x:torch.Tensor, time:torch.Tensor) -> torch.Tensor:
         fx = self.gn(x)
         fx = F.silu(fx)
         fx = self.conv(fx)
@@ -32,11 +37,11 @@ class UNetResidual(nn.Module):
 
 
 class UNetAttention(nn.Module):
-    def __init__(self, n_head, n_embd, d_prompt = 768):
+    def __init__(self, n_head:int, n_embd:int, d_prompt:int = config.PROMPT_DIM) -> None:
         super().__init__()
         channels = n_head * n_embd
 
-        self.gn = nn.GroupNorm(32, channels)
+        self.gn = nn.GroupNorm(config.BATCH_SIZE, channels)
         self.conv_in = nn.Conv2d(channels, channels, kernel_size=1, padding=0)
 
         self.ln1 = nn.LayerNorm(channels)
@@ -51,7 +56,7 @@ class UNetAttention(nn.Module):
         self.conv_out = nn.Conv2d(channels, channels, kernel_size=1, padding=0)
 
 
-    def forward(self, x, prompt):
+    def forward(self, x:torch.Tensor, prompt:torch.Tensor) -> torch.Tensor:
         fx = self.gn(x)
         fx = self.conv_in(fx)
 
@@ -75,13 +80,13 @@ class UNetAttention(nn.Module):
 
 
 class UNetEncoder(nn.Module):
-    def __init__(self, channels=320):
+    def __init__(self, channels:int=config.UNET_INIT_CHANNELS) -> None:
         super().__init__()
 
         # (B, 4, H/8, W/8) -> (B, channels, H/8, W/8)
         self.block1 = nn.Sequential(
             nn.Conv2d(4, channels, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels),
+            nn.GroupNorm(config.BATCH_SIZE, channels),
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.SiLU(),
         )
@@ -92,7 +97,7 @@ class UNetEncoder(nn.Module):
         self.block2 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels, channels * 2, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 2),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 2),
             nn.Conv2d(channels * 2, channels * 2, kernel_size=3, padding=1),
             nn.SiLU(),
         )
@@ -103,7 +108,7 @@ class UNetEncoder(nn.Module):
         self.block3 =  nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels * 2, channels * 4, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 4),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 4),
             nn.Conv2d(channels * 4, channels * 4, kernel_size=3, padding=1),
             nn.SiLU(),
         )
@@ -114,7 +119,7 @@ class UNetEncoder(nn.Module):
         self.block4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(channels * 4, channels * 8, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 8),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 8),
             nn.Conv2d(channels * 8, channels * 8, kernel_size=3, padding=1),
             nn.SiLU(),
         )
@@ -142,23 +147,22 @@ class UNetEncoder(nn.Module):
             self.att4
         ])
 
-    def forward(self, x, prompt, time):
+    def forward(self, x:torch.Tensor, prompt:torch.Tensor, time:torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         skips = []
         for block, res, att in zip(self.blocks, self.res, self.att):
             x = block(x)
             x = res(x, time)
             x = att(x, prompt)
-            x.append(x)
-            break
+            skips.append(x)
         return x, skips
 
 
 class UNetDecoder(nn.Module):
-    def __init__(self, channels = 320):
+    def __init__(self, channels:int = config.UNET_INIT_CHANNELS) -> None:
         # (B, channels * 8, H/64, W/64) --[concat]-> (B, channels * 16, H/64, W/64) -> (B, channels * 4, H/32, W/32)
         self.block1 = nn.Sequential(
             nn.Conv2d(channels * 16, channels * 8, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 8),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 8),
             nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
             nn.Upsample(scale_factor=2),
             nn.SiLU(),
@@ -170,7 +174,7 @@ class UNetDecoder(nn.Module):
         # (B, channels * 4, H/32, W/32) --[concat]-> (B, channels * 8, H/32, W/32) -> (B, channels * 2, H/16, W/16)
         self.block2 = nn.Sequential(
             nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 4),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 4),
             nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
             nn.Upsample(scale_factor=2),
             nn.SiLU(),
@@ -183,7 +187,7 @@ class UNetDecoder(nn.Module):
         # (B, channels * 2, H/16, W/16) --[concat]-> (B, channels * 4, H/16, W/16) -> (B, channels, H/8, W/8)
         self.block3 = nn.Sequential(
             nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
-            nn.GroupNorm(32, channels * 2),
+            nn.GroupNorm(config.BATCH_SIZE, channels * 2),
             nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1),
             nn.Upsample(scale_factor=2),
             nn.SiLU(),
@@ -203,7 +207,7 @@ class UNetDecoder(nn.Module):
 
         # (B, channels, H/8, W/8) -> (B, 4, H/8, H/8)
         self.output_layer = nn.Sequential(
-            nn.GroupNorm(32, channels),
+            nn.GroupNorm(config.BATCH_SIZE, channels),
             nn.SiLU(),
             nn.Conv2d(channels, 4, kernel_size=3, padding=1),
         )
@@ -229,7 +233,7 @@ class UNetDecoder(nn.Module):
             self.att4
         ])
 
-    def forward(self, x, skips, prompt, time):
+    def forward(self, x:torch.Tensor, skips:List[torch.Tensor], prompt:torch.Tensor, time:torch.Tensor) -> torch.Tensor:
         for block, skip, res, att in zip(self.blocks, skips, self.res, self.att):
             x = torch.cat([x, skip], dim=1)
             x = block(x)
@@ -240,7 +244,7 @@ class UNetDecoder(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, channels=320):
+    def __init__(self, channels:int=config.UNET_INIT_CHANNELS) ->  None:
         # (B, 4, H/8, W/8) -> (B, channels * 8, H/64, H/64)
         self.encoders = UNetEncoder(channels)
 
@@ -262,7 +266,7 @@ class UNet(nn.Module):
         # (B, channels * 8, H/64, W/64) -> (B, 4, H/8, W/8)
         self.decoders = UNetDecoder(channels)
 
-    def forward(self, x, prompt, time):
+    def forward(self, x:torch.Tensor, prompt:torch.Tensor, time:torch.Tensor) ->  torch.Tensor:
         x, skips = self.encoders(x, prompt, time)
 
         x = self.bottleneck_in(x)

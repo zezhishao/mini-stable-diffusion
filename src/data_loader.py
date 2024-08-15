@@ -3,9 +3,14 @@ import torch
 from PIL import Image
 from pycocotools.coco import COCO
 import torchvision.transforms as transforms
+from .utils import Config
+
+
+config = Config()
+
 
 class CocoImageLoader:
-    def __init__(self, img_folder: str, captions_file: str, reshape_size: tuple = (256, 256), batch_size: int = 32):
+    def __init__(self, img_folder: str, captions_file: str, reshape_size: tuple = config.IMG_SIZE, batch_size: int = config.BATCH_SIZE):
         self.img_folder = img_folder
         self.coco_cap = COCO(captions_file)
         self.transforms = transforms.Compose([
