@@ -275,3 +275,4 @@ class UNet(nn.Module):
         x = self.bottleneck_out(x)
 
         x = self.decoders(x, skips, prompt, time)
+        return x
