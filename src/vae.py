@@ -29,7 +29,7 @@ class VAE_Residual(nn.Module):
         x = F.silu(x)
         x = self.conv1(x)
 
-        x = self.gn(x)
+        x = self.gn2(x)
         x = F.silu(x)
         x = self.conv2(x)
 
@@ -148,7 +148,7 @@ class VAE_Decoder(nn.Module):
 
             # (B, channels * 2, H/2, W/2) -> (B, channels, H, W)
             nn.Upsample(scale_factor=2),
-            nn.Conv2d(channels*4, channels*4, kernel_size=3, padding=1),
+            nn.Conv2d(channels*2, channels*2, kernel_size=3, padding=1),
             VAE_Residual(channels * 2, channels),
 
             nn.GroupNorm(config.BATCH_SIZE, channels),

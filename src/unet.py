@@ -70,7 +70,7 @@ class UNetAttention(nn.Module):
         cx = self.ln3(cx)
         gx, gate = self.gelu_linear(cx).chunk(2, dim = -1)
         gx = gx * F.gelu(gate)
-        gx = self.gelu_linear2(x)
+        gx = self.gelu_linear2(gx)
         gx = gx + sx
 
         gx = gx.transpose(-2, -1).reshape(B, C, H, W)
@@ -145,6 +145,7 @@ class UNetEncoder(nn.Module):
 
 class UNetDecoder(nn.Module):
     def __init__(self, channels:int = config.UNET_INIT_CHANNELS) -> None:
+        super().__init__()
         # (B, channels * 4, H/32, W/32) --[concat]-> (B, channels * 8, H/32, W/32) -> (B, channels * 2, H/16, W/16)
         self.block1 = nn.Sequential(
             nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
@@ -167,8 +168,8 @@ class UNetDecoder(nn.Module):
             nn.SiLU(),
         )
 
-        self.res2 = UNetResidual(channels * 2)
-        self.att2 = UNetAttention(8, channels * 2 // 8)
+        self.res2 = UNetResidual(channels)
+        self.att2 = UNetAttention(8, channels // 8)
 
         # (B, channels, H/8, W/8) --[concat]-> (B, channels * 2, H/8, W/8) -> (B, channels, H/8, W/8)
         self.block3 = nn.Sequential(
@@ -205,8 +206,8 @@ class UNetDecoder(nn.Module):
         ])
 
     def forward(self, x:torch.Tensor, skips:List[torch.Tensor], prompt:torch.Tensor, time:torch.Tensor) -> torch.Tensor:
-        for block, skip, res, att in zip(self.blocks, skips, self.res, self.att):
-            x = torch.cat([x, skip], dim=1)
+        for block, res, att in zip(self.blocks, self.res, self.att):
+            x = torch.cat([x, skips.pop()], dim=1)
             x = block(x)
             x = res(x, time)
             x = att(x, prompt)
