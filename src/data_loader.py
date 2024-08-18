@@ -22,6 +22,9 @@ class CocoImageLoader:
         self.n_images = len(self.img_names)
         self.batch_size = batch_size
 
+    def __len__(self):
+        return self.n_images // self.batch_size
+
     def get_batch(self):
         indices = torch.randint(0, self.n_images, (self.batch_size,))
         img_paths = [os.path.join(self.img_folder, self.img_names[idx]) for idx in indices]

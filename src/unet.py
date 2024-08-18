@@ -115,36 +115,22 @@ class UNetEncoder(nn.Module):
         self.res3 = UNetResidual(channels * 4)
         self.att3 = UNetAttention(8, channels * 4 // 8)
 
-        # (B, channels * 4, H/32, W/32) -> (B, channels * 8, H/64, W/64)
-        self.block4 = nn.Sequential(
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(channels * 4, channels * 8, kernel_size=3, padding=1),
-            nn.GroupNorm(config.BATCH_SIZE, channels * 8),
-            nn.Conv2d(channels * 8, channels * 8, kernel_size=3, padding=1),
-            nn.SiLU(),
-        )
-        self.res4 = UNetResidual(channels * 4)
-        self.att4 = UNetAttention(8, channels * 4 // 8)
-
         self.blocks = nn.ModuleList([
             self.block1,
             self.block2,
             self.block3,
-            self.block4,
         ])
 
         self.res = nn.ModuleList([
             self.res1,
             self.res2,
             self.res3,
-            self.res4
         ])
 
         self.att = nn.ModuleList([
             self.att1,
             self.att2,
             self.att3,
-            self.att4
         ])
 
     def forward(self, x:torch.Tensor, prompt:torch.Tensor, time:torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
@@ -159,20 +145,8 @@ class UNetEncoder(nn.Module):
 
 class UNetDecoder(nn.Module):
     def __init__(self, channels:int = config.UNET_INIT_CHANNELS) -> None:
-        # (B, channels * 8, H/64, W/64) --[concat]-> (B, channels * 16, H/64, W/64) -> (B, channels * 4, H/32, W/32)
-        self.block1 = nn.Sequential(
-            nn.Conv2d(channels * 16, channels * 8, kernel_size=3, padding=1),
-            nn.GroupNorm(config.BATCH_SIZE, channels * 8),
-            nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
-            nn.Upsample(scale_factor=2),
-            nn.SiLU(),
-        )
-
-        self.res1 = UNetResidual(channels * 4)
-        self.att1 = UNetAttention(8, channels * 4 // 8)
-
         # (B, channels * 4, H/32, W/32) --[concat]-> (B, channels * 8, H/32, W/32) -> (B, channels * 2, H/16, W/16)
-        self.block2 = nn.Sequential(
+        self.block1 = nn.Sequential(
             nn.Conv2d(channels * 8, channels * 4, kernel_size=3, padding=1),
             nn.GroupNorm(config.BATCH_SIZE, channels * 4),
             nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
@@ -180,12 +154,12 @@ class UNetDecoder(nn.Module):
             nn.SiLU(),
         )
 
-        self.res2 = UNetResidual(channels * 2)
-        self.att2 = UNetAttention(8, channels * 2 // 8)
+        self.res1 = UNetResidual(channels * 2)
+        self.att1 = UNetAttention(8, channels * 2 // 8)
 
 
         # (B, channels * 2, H/16, W/16) --[concat]-> (B, channels * 4, H/16, W/16) -> (B, channels, H/8, W/8)
-        self.block3 = nn.Sequential(
+        self.block2 = nn.Sequential(
             nn.Conv2d(channels * 4, channels * 2, kernel_size=3, padding=1),
             nn.GroupNorm(config.BATCH_SIZE, channels * 2),
             nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1),
@@ -193,17 +167,17 @@ class UNetDecoder(nn.Module):
             nn.SiLU(),
         )
 
-        self.res3 = UNetResidual(channels * 2)
-        self.att3 = UNetAttention(8, channels * 2 // 8)
+        self.res2 = UNetResidual(channels * 2)
+        self.att2 = UNetAttention(8, channels * 2 // 8)
 
         # (B, channels, H/8, W/8) --[concat]-> (B, channels * 2, H/8, W/8) -> (B, channels, H/8, W/8)
-        self.block4 = nn.Sequential(
+        self.block3 = nn.Sequential(
             nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1),
             nn.SiLU(),
         )
 
-        self.res4 = UNetResidual(channels)
-        self.att4 = UNetAttention(8, channels // 8)
+        self.res3 = UNetResidual(channels)
+        self.att3 = UNetAttention(8, channels // 8)
 
         # (B, channels, H/8, W/8) -> (B, 4, H/8, H/8)
         self.output_layer = nn.Sequential(
@@ -216,21 +190,18 @@ class UNetDecoder(nn.Module):
             self.block1,
             self.block2,
             self.block3,
-            self.block4
         ])
 
         self.res = nn.ModuleList([
             self.res1,
             self.res2,
             self.res3,
-            self.res4
         ])
 
         self.att = nn.ModuleList([
             self.att1,
             self.att2,
             self.att3,
-            self.att4
         ])
 
     def forward(self, x:torch.Tensor, skips:List[torch.Tensor], prompt:torch.Tensor, time:torch.Tensor) -> torch.Tensor:
