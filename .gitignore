@@ -164,6 +164,5 @@ cython_debug/
 # custom files
 *.ipynb
 *.json
-main.py
 /data
 

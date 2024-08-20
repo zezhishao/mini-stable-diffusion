@@ -1,10 +1,3 @@
-# stable-diffusion
-stable diffusion using pytorch only (and bert for text embeddings)
-
-
-# Sample Training Code
-Here is training code for the project. You can also refer to `main.py`.
-```python 
 import torch
 from stable_diffusion import DiffusionModel, CocoImageLoader
 from stable_diffusion.utils import Config
@@ -28,4 +21,3 @@ m = torch.compile(m)
 # Train Model
 # NOTE: 'autocast=True' for faster training using bfloat16 if available
 state_dict = m.train(data_loader, return_state_dict=True, autocast=True)
-```

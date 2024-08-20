@@ -60,7 +60,8 @@ class DiffusionModel(nn.Module):
               batch_size:int=32, 
               eta_min = 3e-6,
               warmup_epcohs = 50, # try to keep this 25% of epochs
-              return_state_dict=False) -> Union[dict, None]:
+              return_state_dict=False,
+              autocast = False) -> Union[dict, None]:
 
         opt = torch.optim.AdamW(self.parameters(), lr=lr)
         opt_sch = CustomCosineAnnealingLR(opt, epochs, eta_min=eta_min, warmup_epochs=warmup_epcohs)
@@ -79,13 +80,20 @@ class DiffusionModel(nn.Module):
                 t = self.scheduler.sample_timesteps(batch_size).to(self.device)
                 x_t, noise = self.scheduler.noise_images(images, t)
                 latent_noise = torch.randn(config.BATCH_SIZE, 4, config.LATENT_H, config.LATENT_H).to(device=config.DEVICE)
-                predicted_noise = self.m(x_t, latent_noise, prompts_emb, t)
-                loss = mse(noise, predicted_noise)
+                if autocast:
+                    with torch.autocast(dtype=torch.bfloat16, device_type=config.DEVICE):
+                        predicted_noise = self.m(x_t, latent_noise, prompts_emb, t)
+                        loss = mse(noise, predicted_noise)
+                else:
+                    predicted_noise = self.m(x_t, latent_noise, prompts_emb, t)
+                    loss = mse(noise, predicted_noise)
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
                 opt_sch.step()
                 pb.set_postfix({'Loss':loss.item()})
+        if return_state_dict:
+            return self.state_dict()
 
 
     def generate(self,

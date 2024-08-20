@@ -61,9 +61,3 @@ def rescale(x, old, new, clamp=False, to_image=False):
     if to_image:
         x = x.to(torch.uint8)
     return x
-
-
-def get_time_embedding(step):
-    freqs = torch.pow(10000, torch.arange(0, 160, dtype=torch.float32) / 160)
-    x = torch.tensor([step], dtype=torch.float32)[:, None] * freqs[None]
-    return torch.cat([torch.cos(x), torch.sin(x)], dim=-1)
