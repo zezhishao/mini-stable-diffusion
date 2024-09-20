@@ -5,7 +5,8 @@ from PIL import Image
 from .unet import UNet
 from .vae import VAE_Encoder, VAE_Decoder
 from .bert import BERT
-from .utils import Config, rescale, TimePositionEmbedding, CustomCosineAnnealingLR
+from .clip import CLIP
+from .utils import Config, rescale, TimePositionEmbedding
 from .scheduler import Scheduler
 import numpy as np
 from typing import Union
@@ -26,6 +27,7 @@ class DiffusionModel(nn.Module):
             nn.SiLU()
         )
         self.bert = BERT()
+        # self.clip = CLIP()
         self.unet = UNet()
         self.encoder = VAE_Encoder()
         self.decoder = VAE_Decoder()
@@ -53,7 +55,7 @@ class DiffusionModel(nn.Module):
 
         return out
     
-    def train(self, 
+    def train_model(self, 
               data_loader,
               epochs:int=200, 
               lr:float= 3e-4, 
@@ -64,10 +66,12 @@ class DiffusionModel(nn.Module):
               autocast = False) -> Union[dict, None]:
 
         opt = torch.optim.AdamW(self.parameters(), lr=lr)
-        opt_sch = CustomCosineAnnealingLR(opt, epochs, eta_min=eta_min, warmup_epochs=warmup_epcohs)
+        opt_sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=eta_min)
         mse = nn.MSELoss()
 
         for epoch in range(epochs):
+            if epoch > warmup_epcohs:
+                opt_sch.step()
             pb = tqdm(range(len(data_loader)))
             pb.set_description(f'Train Epoch [{epoch+1}/{epochs}]: ')
             for _ in enumerate(pb):
@@ -75,8 +79,9 @@ class DiffusionModel(nn.Module):
                 if torch.rand(1).item() < 0.1:
                     prompts = [''] * config.BATCH_SIZE  # 10% chance of training without labels
                 images = images.to(config.DEVICE)
-                prompts = self.bert.tokenize(prompts).to(device=config.DEVICE)
-                prompts_emb = self.bert(prompts) 
+                prompts_emb = self.bert(prompts).to(device=config.DEVICE)
+                # clip prompts
+                # prompts_emb = self.clip(prompts).to(device=config.DEVICE)
                 t = self.scheduler.sample_timesteps(batch_size).to(self.device)
                 x_t, noise = self.scheduler.noise_images(images, t)
                 latent_noise = torch.randn(config.BATCH_SIZE, 4, config.LATENT_H, config.LATENT_H).to(device=config.DEVICE)
@@ -117,12 +122,13 @@ class DiffusionModel(nn.Module):
             else:
                 generator.seed()
 
-            tokens = self.bert.tokenize([prompt])
-            cprompt_logits = self.bert(tokens)
+            cprompt_logits = self.bert(prompt).to(device=config.DEVICE)
+            # cprompt_logits = self.clip(prompt).to(device=config.DEVICE)
             if cfg:
-                utokens = self.bert.tokenize([u_prompt])
-                uprompt_logits = self.bert(utokens)
+                uprompt_logits = self.bert(u_prompt).to(device=config.DEVICE)
                 prompt_logits = torch.cat([cprompt_logits, uprompt_logits])
+                # uprompt_logits = self.clip(u_prompt).to(device=config.DEVICE)
+                # prompt_logits = torch.cat([cprompt_logits, uprompt_logits])
 
             else:
                 prompt_logits = cprompt_logits
@@ -146,7 +152,7 @@ class DiffusionModel(nn.Module):
                 latents = self.encoder(input_img, encoder_noise)
 
                 self.scheduler.set_strength(strength=strength)
-                latents = self.scheduler.noise_images(latents, self.scheduler.timestamps[0])
+                latents, _ = self.scheduler.noise_images(latents, self.scheduler.timesteps[0])
 
             else:
                 latents = torch.randn(latent_shape, generator=generator, device=self.device)
@@ -167,7 +173,7 @@ class DiffusionModel(nn.Module):
                     y_cond, y_uncond = y.chunk(2)
                     y = (y_cond - y_uncond) * cfg_weight + y_uncond
 
-                # latents = sampler.step(step, latents, y)
+                latents = self.scheduler.step(step, latents, y)
 
             images = self.decoder(latents)
 

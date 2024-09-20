@@ -1,8 +1,6 @@
-# TODO
-# same sampler as DDPM
-
 import torch
 from .utils import Config
+from typing import Tuple
 
 
 config = Config()
@@ -24,7 +22,7 @@ class Scheduler:
         self.timesteps = torch.arange(0, noise_steps)[::-1].clone().to(device=config.DEVICE)
         self.n_inference_steps = 1
 
-    def noise_images(self, x:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
+    def noise_images(self, x:torch.Tensor, t:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         ah_sqrt = torch.sqrt(self.alpha_hat[t]).view(-1, 1, 1, 1)
         ah_om_sqrt = torch.sqrt(1. - self.alpha_hat[t]).view(-1, 1, 1, 1)
         epsilon = torch.rand_like(x)
@@ -46,7 +44,7 @@ class Scheduler:
     def step(self, x:torch.Tensor, t:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
 
         alpha = self.alpha[t][:, None, None, None]
-        alpha_hat = self.lpha_hat[t][:, None, None, None]
+        alpha_hat = self.alpha_hat[t][:, None, None, None]
         beta = self.beta[t][:, None, None, None]
 
         noise = torch.randn_like(x) if t>1 else torch.zeros_like(x)
